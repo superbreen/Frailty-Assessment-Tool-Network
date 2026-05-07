@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frailty Assessment Network</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Georgia', serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
+  
+  #app { display: flex; flex-direction: column; height: 100vh; }
+  
+  header { 
+    padding: 18px 28px 14px; 
+    border-bottom: 1px solid #21262d;
+    display: flex; align-items: baseline; gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { 
+    font-size: 18px; font-weight: 400; letter-spacing: 0.04em;
+    color: #e6edf3; font-family: 'Georgia', serif;
+  }
+  header p { font-size: 12px; color: #6e7681; font-family: sans-serif; }
+
+  .controls { 
+    padding: 10px 28px; 
+    display: flex; gap: 8px; align-items: center;
+    border-bottom: 1px solid #21262d;
+    flex-wrap: wrap;
+  }
+  .controls label { font-size: 11px; color: #6e7681; font-family: sans-serif; letter-spacing: 0.05em; text-transform: uppercase; }
+  .filter-btn {
+    font-size: 11px; font-family: sans-serif;
+    padding: 4px 12px; border-radius: 20px;
+    border: 1px solid #30363d; background: transparent;
+    color: #8b949e; cursor: pointer; transition: all 0.15s;
+    letter-spacing: 0.03em;
+  }
+  .filter-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+  .filter-btn.active { background: #21262d; color: #e6edf3; border-color: #58a6ff; }
+  .sep { width: 1px; height: 20px; background: #21262d; }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  #canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+  
+  svg { width: 100%; height: 100%; }
+
+  .node-primary circle { stroke: #21262d; stroke-width: 1.5; }
+  .node-ancillary circle { stroke: #21262d; stroke-width: 1; }
+  .node-dual circle { stroke: #ffd700; stroke-width: 2; stroke-dasharray: 3 2; }
+
+  .node { cursor: pointer; }
+  .node text { 
+    font-family: sans-serif; font-size: 11px; fill: #c9d1d9;
+    pointer-events: none; user-select: none;
+  }
+
+  .link-pp { stroke: #388bfd; stroke-opacity: 0.6; fill: none; }
+  .link-pa { stroke: #3fb950; stroke-opacity: 0.4; fill: none; stroke-dasharray: none; }
+  
+  .node.dimmed circle { opacity: 0.12; }
+  .node.dimmed text { opacity: 0.12; }
+  .link.dimmed { opacity: 0.05; }
+  .link.highlighted { stroke-opacity: 0.9; }
+  .link-pp.highlighted { stroke-opacity: 0.9; }
+  .link-pa.highlighted { stroke-opacity: 0.8; }
+
+  /* Sidebar */
+  #sidebar {
+    width: 280px; border-left: 1px solid #21262d;
+    padding: 20px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 16px;
+    background: #0d1117;
+  }
+  #sidebar h2 { font-size: 13px; font-weight: 400; color: #6e7681; font-family: sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+  
+  .info-card {
+    background: #161b22; border: 1px solid #21262d;
+    border-radius: 8px; padding: 14px;
+  }
+  .info-card h3 { font-size: 13px; color: #e6edf3; font-family: sans-serif; font-weight: 500; line-height: 1.4; margin-bottom: 8px; }
+  .info-card .badge { 
+    display: inline-block; font-size: 10px; font-family: sans-serif;
+    padding: 2px 8px; border-radius: 10px; margin-bottom: 10px; font-weight: 500;
+  }
+  .badge-primary { background: #1d3557; color: #58a6ff; }
+  .badge-ancillary { background: #1a3328; color: #3fb950; }
+  .badge-dual { background: #2d2a18; color: #d4a017; }
+
+  .stat-row { display: flex; justify-content: space-between; align-items: center; margin: 4px 0; }
+  .stat-label { font-size: 11px; color: #6e7681; font-family: sans-serif; }
+  .stat-value { font-size: 13px; color: #e6edf3; font-family: 'Georgia', serif; }
+
+  .conn-list { margin-top: 10px; }
+  .conn-list h4 { font-size: 10px; color: #6e7681; font-family: sans-serif; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+  .conn-item { 
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 0; border-bottom: 1px solid #21262d;
+    font-size: 11px; font-family: sans-serif;
+  }
+  .conn-item:last-child { border-bottom: none; }
+  .conn-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .conn-dot-pp { background: #388bfd; }
+  .conn-dot-pa { background: #3fb950; }
+  .conn-name { color: #c9d1d9; flex: 1; }
+  .conn-weight { color: #6e7681; font-size: 10px; }
+
+  .intv-bar { margin-top: 8px; }
+  .intv-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: 11px; font-family: sans-serif; }
+  .intv-label { width: 110px; color: #8b949e; flex-shrink: 0; }
+  .intv-track { flex: 1; height: 4px; background: #21262d; border-radius: 2px; }
+  .intv-fill { height: 100%; border-radius: 2px; }
+  .intv-count { color: #6e7681; font-size: 10px; width: 20px; text-align: right; }
+
+  .legend { margin-top: auto; padding-top: 16px; border-top: 1px solid #21262d; }
+  .legend h4 { font-size: 10px; color: #6e7681; font-family: sans-serif; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; }
+  .leg-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 11px; font-family: sans-serif; color: #8b949e; }
+  .leg-circle { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .leg-line { width: 20px; height: 2px; flex-shrink: 0; }
+  .leg-line-dashed { width: 20px; height: 0; border-top: 2px dashed #388bfd; flex-shrink: 0; }
+
+  .empty-state { 
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #6e7681; font-family: sans-serif; font-size: 12px; text-align: center; gap: 8px;
+    padding: 20px;
+  }
+  .empty-state svg { opacity: 0.3; }
+
+  .tooltip {
+    position: absolute; background: #161b22; border: 1px solid #30363d;
+    border-radius: 6px; padding: 8px 12px; font-family: sans-serif;
+    font-size: 11px; color: #c9d1d9; pointer-events: none;
+    opacity: 0; transition: opacity 0.1s; max-width: 200px;
+    z-index: 100; line-height: 1.5;
+  }
+
+  .reset-btn { 
+    font-size: 11px; font-family: sans-serif;
+    padding: 4px 10px; border-radius: 4px;
+    border: 1px solid #30363d; background: transparent;
+    color: #6e7681; cursor: pointer;
+    margin-left: auto;
+  }
+  .reset-btn:hover { color: #e6edf3; border-color: #6e7681; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Frailty Assessment Tool Network</h1>
+    <p>77 studies &middot; Node size = frequency &middot; Edge weight = co-occurrence</p>
+  </header>
+  <div class="controls">
+    <span class="label" style="font-size:11px;color:#6e7681;font-family:sans-serif;letter-spacing:0.05em;">SHOW:</span>
+    <button class="filter-btn active" id="btn-all" onclick="filterView('all')">All connections</button>
+    <button class="filter-btn" id="btn-pp" onclick="filterView('pp')">Primary ↔ Primary</button>
+    <button class="filter-btn" id="btn-pa" onclick="filterView('pa')">Primary → Ancillary</button>
+    <div class="sep"></div>
+    <span class="label" style="font-size:11px;color:#6e7681;font-family:sans-serif;letter-spacing:0.05em;">MIN WEIGHT:</span>
+    <button class="filter-btn active" id="btn-w2" onclick="setMinWeight(2)">≥ 2</button>
+    <button class="filter-btn" id="btn-w3" onclick="setMinWeight(3)">≥ 3</button>
+    <button class="filter-btn" id="btn-w5" onclick="setMinWeight(5)">≥ 5</button>
+    <button class="reset-btn" onclick="resetSelection()">Reset selection</button>
+  </div>
+  <div class="main">
+    <div id="canvas-wrap">
+      <div class="tooltip" id="tooltip"></div>
+      <svg id="network"></svg>
+    </div>
+    <div id="sidebar">
+      <h2>Node details</h2>
+      <div id="sidebar-content">
+        <div class="empty-state">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+          <div>Click any node to explore<br>its connections</div>
+        </div>
+      </div>
+      <div class="legend">
+        <h4>Legend</h4>
+        <div class="leg-row"><div class="leg-circle" style="background:#4393c4;border:2px solid #21262d;"></div> Primary assessment tool</div>
+        <div class="leg-row"><div class="leg-circle" style="background:#56b860;border:2px solid #21262d;"></div> Ancillary test</div>
+        <div class="leg-row"><div class="leg-circle" style="background:#56b860;border:2px dashed #ffd700;width:12px;height:12px;"></div> Used in both roles</div>
+        <div class="leg-row"><div class="leg-line-dashed"></div> Co-used primary tools</div>
+        <div class="leg-row"><div class="leg-line" style="background:#3fb950;"></div> Primary → Ancillary</div>
+        <div class="leg-row" style="color:#6e7681;">Node size ∝ study frequency</div>
+        <div class="leg-row" style="color:#6e7681;">Edge width ∝ co-occurrence count</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const rawData = {"nodes":[{"id":"Tilburg Frailty Indicator (TFI)","type":"primary","count":3,"intervention_dist":{"Exercise only":1,"Multi-component":2}},{"id":"Strawbridge Questionnaire","type":"primary","count":2,"intervention_dist":{"Multi-component":2}},{"id":"Modified Physical Performance Test (mPPT)","type":"primary","count":6,"intervention_dist":{"Exercise only":2,"Multi-component":4}},{"id":"Evaluative Frailty Index for Physical Activity (EFIP)","type":"primary","count":2,"intervention_dist":{"Multi-component":2}},{"id":"Survey of Health, Ageing and Retirement in Europe Frailty Instrument (SHARE-FI)","type":"primary","count":5,"intervention_dist":{"Multi-component":5}},{"id":"Study of Osteoporotic Fractures Index (SOF Index)","type":"primary","count":5,"intervention_dist":{"Exercise only":4,"Multi-component":1}},{"id":"Fried's Frailty Phenotype (FFP)","type":"primary","count":43,"intervention_dist":{"Multi-component":28,"Exercise only":15}},{"id":"Edmonton Frail Scale (EFS)","type":"primary","count":5,"intervention_dist":{"Multi-component":3,"Exercise only":2}},{"id":"FRAIL Questionnaire","type":"primary","count":4,"intervention_dist":{"Exercise only":2,"Multi-component":2}},{"id":"Clinical Frailty Scale (CFS)","type":"primary","count":3,"intervention_dist":{"Multi-component":3}},{"id":"Short Physical Performance Battery (SPPB)","type":"primary","count":12,"intervention_dist":{"Multi-component":9,"Exercise only":3}},{"id":"Frailty Index (FI)","type":"primary","count":4,"intervention_dist":{"Multi-component":1,"Exercise only":3}},{"id":"Body Mass Index (BMI)","type":"ancillary","count":8},{"id":"Montreal Cognitive Assessment (MoCA)","type":"ancillary","count":5},{"id":"Handgrip Dynamometry","type":"ancillary","count":16},{"id":"Geriatric Depression Scale (GDS)","type":"ancillary","count":13},{"id":"Lower Limb Strength","type":"ancillary","count":5},{"id":"400m Walk Test","type":"ancillary","count":4},{"id":"6-Minute Walk Test (6MWT)","type":"ancillary","count":9},{"id":"Timed Up and Go (TUG)","type":"ancillary","count":21},{"id":"Bioelectrical Impedance Analysis (BIA)","type":"ancillary","count":4},{"id":"Barthel Index (BI)","type":"ancillary","count":15},{"id":"Mini-Mental State Examination (MMSE)","type":"ancillary","count":18},{"id":"36-Item Short Form (SF-36)","type":"ancillary","count":7},{"id":"Gait Velocity (GV)","type":"ancillary","count":10},{"id":"Gait Speed Tests (GST)","type":"ancillary","count":5}],"links":[{"source":"Fried's Frailty Phenotype (FFP)","target":"Short Physical Performance Battery (SPPB)","weight":3,"type":"primary-primary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Study of Osteoporotic Fractures Index (SOF Index)","weight":2,"type":"primary-primary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Tilburg Frailty Indicator (TFI)","weight":3,"type":"primary-primary"},{"source":"Short Physical Performance Battery (SPPB)","target":"Study of Osteoporotic Fractures Index (SOF Index)","weight":3,"type":"primary-primary"},{"source":"Study of Osteoporotic Fractures Index (SOF Index)","target":"Tilburg Frailty Indicator (TFI)","weight":2,"type":"primary-primary"},{"source":"Edmonton Frail Scale (EFS)","target":"Fried's Frailty Phenotype (FFP)","weight":2,"type":"primary-primary"},{"source":"FRAIL Questionnaire","target":"Fried's Frailty Phenotype (FFP)","weight":2,"type":"primary-primary"},{"source":"Short Physical Performance Battery (SPPB)","target":"Mini-Mental State Examination (MMSE)","weight":4,"type":"primary-ancillary"},{"source":"Short Physical Performance Battery (SPPB)","target":"Handgrip Dynamometry","weight":4,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Barthel Index (BI)","weight":9,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Mini-Mental State Examination (MMSE)","weight":12,"type":"primary-ancillary"},{"source":"Short Physical Performance Battery (SPPB)","target":"Barthel Index (BI)","weight":3,"type":"primary-ancillary"},{"source":"Tilburg Frailty Indicator (TFI)","target":"Barthel Index (BI)","weight":2,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Short Physical Performance Battery (SPPB)","weight":8,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Bioelectrical Impedance Analysis (BIA)","weight":3,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Lower Limb Strength","weight":3,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Handgrip Dynamometry","weight":11,"type":"primary-ancillary"},{"source":"Short Physical Performance Battery (SPPB)","target":"400m Walk Test","weight":3,"type":"primary-ancillary"},{"source":"Modified Physical Performance Test (mPPT)","target":"36-Item Short Form (SF-36)","weight":4,"type":"primary-ancillary"},{"source":"Frailty Index (FI)","target":"Barthel Index (BI)","weight":2,"type":"primary-ancillary"},{"source":"Strawbridge Questionnaire","target":"Timed Up and Go (TUG)","weight":2,"type":"primary-ancillary"},{"source":"Edmonton Frail Scale (EFS)","target":"6-Minute Walk Test (6MWT)","weight":3,"type":"primary-ancillary"},{"source":"Edmonton Frail Scale (EFS)","target":"Timed Up and Go (TUG)","weight":2,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Geriatric Depression Scale (GDS)","weight":10,"type":"primary-ancillary"},{"source":"Edmonton Frail Scale (EFS)","target":"Mini-Mental State Examination (MMSE)","weight":2,"type":"primary-ancillary"},{"source":"FRAIL Questionnaire","target":"Mini-Mental State Examination (MMSE)","weight":3,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Body Mass Index (BMI)","weight":5,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Gait Velocity (GV)","weight":7,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Timed Up and Go (TUG)","weight":13,"type":"primary-ancillary"},{"source":"Survey of Health, Ageing and Retirement in Europe Frailty Instrument (SHARE-FI)","target":"Short Physical Performance Battery (SPPB)","weight":2,"type":"primary-ancillary"},{"source":"Evaluative Frailty Index for Physical Activity (EFIP)","target":"Timed Up and Go (TUG)","weight":2,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Montreal Cognitive Assessment (MoCA)","weight":5,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"Gait Speed Tests (GST)","weight":2,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"36-Item Short Form (SF-36)","weight":2,"type":"primary-ancillary"},{"source":"Fried's Frailty Phenotype (FFP)","target":"6-Minute Walk Test (6MWT)","weight":5,"type":"primary-ancillary"},{"source":"FRAIL Questionnaire","target":"Geriatric Depression Scale (GDS)","weight":2,"type":"primary-ancillary"},{"source":"Frailty Index (FI)","target":"Short Physical Performance Battery (SPPB)","weight":2,"type":"primary-ancillary"}]};
+
+// Mark nodes that appear in both roles (SPPB)
+const primaryIds = new Set(rawData.nodes.filter(n=>n.type==='primary').map(n=>n.id));
+const ancillaryIds = new Set(rawData.nodes.filter(n=>n.type==='ancillary').map(n=>n.id));
+const dualIds = new Set([...primaryIds].filter(x=>ancillaryIds.has(x)));
+
+// Deduplicate nodes
+const nodeMap = new Map();
+rawData.nodes.forEach(n => {
+  if(!nodeMap.has(n.id)) {
+    n.displayType = dualIds.has(n.id) ? 'dual' : n.type;
+    nodeMap.set(n.id, n);
+  }
+});
+const nodes = [...nodeMap.values()];
+const links = rawData.links.map(l => ({...l}));
+
+// Short labels
+function shortLabel(id) {
+  const m = id.match(/\(([^)]+)\)$/);
+  if(m) return m[1];
+  if(id.length > 22) return id.split(' ').slice(0,3).join(' ')+'…';
+  return id;
+}
+
+// Scales
+const maxCount = d3.max(nodes, d=>d.count);
+const rScale = d3.scaleSqrt().domain([1, maxCount]).range([7, 34]);
+const lScale = d3.scaleLinear().domain([2, 13]).range([1, 5]);
+
+// State
+let activeFilter = 'all';
+let minWeight = 2;
+let selectedNode = null;
+
+const svg = d3.select('#network');
+const wrap = document.getElementById('canvas-wrap');
+
+let W = wrap.clientWidth, H = wrap.clientHeight;
+
+const g = svg.append('g');
+
+// Zoom
+const zoom = d3.zoom().scaleExtent([0.3, 4]).on('zoom', e => g.attr('transform', e.transform));
+svg.call(zoom);
+
+// Arrow markers
+const defs = svg.append('defs');
+['pp','pa'].forEach(t => {
+  defs.append('marker')
+    .attr('id', `arrow-${t}`)
+    .attr('viewBox','0 0 10 10').attr('refX',8).attr('refY',5)
+    .attr('markerWidth',5).attr('markerHeight',5).attr('orient','auto-start-reverse')
+    .append('path').attr('d','M2 1L8 5L2 9').attr('fill','none')
+    .attr('stroke', t==='pp' ? '#388bfd' : '#3fb950')
+    .attr('stroke-width',1.5).attr('stroke-linecap','round').attr('stroke-linejoin','round');
+});
+
+// Simulation
+const sim = d3.forceSimulation(nodes)
+  .force('link', d3.forceLink(links).id(d=>d.id).distance(d => {
+    const base = d.type === 'primary-primary' ? 120 : 100;
+    return base + (10 - d.weight) * 8;
+  }).strength(0.5))
+  .force('charge', d3.forceManyBody().strength(d => d.type==='primary' ? -400 : -180))
+  .force('center', d3.forceCenter(W/2, H/2))
+  .force('collision', d3.forceCollide().radius(d => rScale(d.count) + 12));
+
+// Link elements
+const linkSel = g.append('g').attr('class','links')
+  .selectAll('line').data(links).join('line')
+  .attr('class', d => `link link-${d.type==='primary-primary'?'pp':'pa'}`)
+  .attr('stroke-width', d => lScale(Math.min(d.weight, 13)))
+  .attr('stroke-dasharray', d => d.type==='primary-primary' ? '5 3' : null)
+  .attr('marker-end', d => `url(#arrow-${d.type==='primary-primary'?'pp':'pa'})`);
+
+// Node elements
+const nodeSel = g.append('g').attr('class','nodes')
+  .selectAll('g').data(nodes).join('g')
+  .attr('class', d => `node node-${d.displayType}`)
+  .call(d3.drag()
+    .on('start', (e,d) => { if(!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+    .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
+    .on('end', (e,d) => { if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }))
+  .on('click', (e,d) => { e.stopPropagation(); selectNode(d); })
+  .on('mouseover', (e,d) => showTooltip(e,d))
+  .on('mousemove', e => moveTooltip(e))
+  .on('mouseout', hideTooltip);
+
+nodeSel.append('circle')
+  .attr('r', d => rScale(d.count))
+  .attr('fill', d => d.displayType==='primary' ? '#1d4e7f' : d.displayType==='dual' ? '#1a4d2e' : '#1a3d24')
+  .attr('stroke', d => d.displayType==='primary' ? '#4393c4' : '#56b860');
+
+nodeSel.append('text')
+  .text(d => shortLabel(d.id))
+  .attr('text-anchor','middle').attr('dy','0.35em')
+  .style('font-size', d => d.type==='primary' ? '10px' : '9px');
+
+svg.on('click', () => resetSelection());
+
+// Tick
+sim.on('tick', () => {
+  linkSel
+    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+    .attr('x2', d => {
+      const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+      const dist = Math.sqrt(dx*dx+dy*dy) || 1;
+      return d.target.x - (dx/dist) * (rScale(d.target.count)+3);
+    })
+    .attr('y2', d => {
+      const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+      const dist = Math.sqrt(dx*dx+dy*dy) || 1;
+      return d.target.y - (dy/dist) * (rScale(d.target.count)+3);
+    });
+  nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+});
+
+// Filter / weight functions
+function applyFilters() {
+  linkSel.each(function(d) {
+    const typeOk = activeFilter==='all' || (activeFilter==='pp'&&d.type==='primary-primary') || (activeFilter==='pa'&&d.type==='primary-ancillary');
+    const weightOk = d.weight >= minWeight;
+    d3.select(this).classed('hidden-link', !typeOk || !weightOk);
+    d3.select(this).style('display', (typeOk && weightOk) ? null : 'none');
+  });
+  if(selectedNode) selectNode(selectedNode);
+}
+
+function filterView(f) {
+  activeFilter = f;
+  ['all','pp','pa'].forEach(x => document.getElementById('btn-'+x).classList.toggle('active', x===f));
+  applyFilters();
+}
+
+function setMinWeight(w) {
+  minWeight = w;
+  [2,3,5].forEach(x => document.getElementById('btn-w'+x).classList.toggle('active', x===w));
+  applyFilters();
+}
+
+// Node selection
+function selectNode(d) {
+  selectedNode = d;
+  const connectedLinks = links.filter(l => {
+    const typeOk = activeFilter==='all' || (activeFilter==='pp'&&l.type==='primary-primary') || (activeFilter==='pa'&&l.type==='primary-ancillary');
+    const weightOk = l.weight >= minWeight;
+    return typeOk && weightOk && (l.source.id===d.id || l.target.id===d.id);
+  });
+  const connectedNodeIds = new Set([d.id, ...connectedLinks.map(l=>l.source.id), ...connectedLinks.map(l=>l.target.id)]);
+
+  nodeSel.classed('dimmed', nd => !connectedNodeIds.has(nd.id));
+  linkSel.classed('dimmed', l => {
+    const visible = connectedLinks.includes(l);
+    return !visible;
+  });
+  linkSel.classed('highlighted', l => connectedLinks.includes(l));
+
+  renderSidebar(d, connectedLinks);
+}
+
+function resetSelection() {
+  selectedNode = null;
+  nodeSel.classed('dimmed', false);
+  linkSel.classed('dimmed', false).classed('highlighted', false);
+  document.getElementById('sidebar-content').innerHTML = `<div class="empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg><div>Click any node to explore<br>its connections</div></div>`;
+}
+
+function renderSidebar(d, connLinks) {
+  const typeLabel = d.displayType==='primary' ? 'Primary tool' : d.displayType==='dual' ? 'Primary + Ancillary' : 'Ancillary test';
+  const badgeClass = d.displayType==='primary' ? 'badge-primary' : d.displayType==='dual' ? 'badge-dual' : 'badge-ancillary';
+  
+  // Intervention distribution
+  let intvHtml = '';
+  if(d.intervention_dist) {
+    const total = Object.values(d.intervention_dist).reduce((a,b)=>a+b,0);
+    const colors = { 'Multi-component': '#388bfd', 'Exercise only': '#3fb950' };
+    intvHtml = `<div class="intv-bar">` + Object.entries(d.intervention_dist).map(([k,v]) => {
+      const pct = total > 0 ? Math.round(v/total*100) : 0;
+      return `<div class="intv-row"><span class="intv-label">${k}</span><div class="intv-track"><div class="intv-fill" style="width:${pct}%;background:${colors[k]||'#8b949e'}"></div></div><span class="intv-count">${v}</span></div>`;
+    }).join('') + `</div>`;
+  }
+
+  // Connections list
+  const ppLinks = connLinks.filter(l=>l.type==='primary-primary').sort((a,b)=>b.weight-a.weight);
+  const paLinks = connLinks.filter(l=>l.type==='primary-ancillary').sort((a,b)=>b.weight-a.weight);
+
+  function connListHtml(ls, dotClass, sourceIsThis) {
+    return ls.map(l => {
+      const other = (l.source.id===d.id) ? l.target : l.source;
+      return `<div class="conn-item"><div class="conn-dot ${dotClass}"></div><span class="conn-name">${shortLabel(other.id)}</span><span class="conn-weight">${l.weight}×</span></div>`;
+    }).join('');
+  }
+
+  let connHtml = '<div class="conn-list">';
+  if(ppLinks.length > 0) {
+    connHtml += `<h4>Co-used primary tools</h4>${connListHtml(ppLinks, 'conn-dot-pp')}`;
+  }
+  if(paLinks.length > 0 && d.type==='primary') {
+    const outLinks = paLinks.filter(l=>l.source.id===d.id);
+    const inLinks = paLinks.filter(l=>l.target.id===d.id);
+    if(outLinks.length) connHtml += `<h4 style="margin-top:8px">Associated ancillary tests</h4>${connListHtml(outLinks, 'conn-dot-pa')}`;
+    if(inLinks.length) connHtml += `<h4 style="margin-top:8px">Used alongside</h4>${connListHtml(inLinks, 'conn-dot-pa')}`;
+  } else if(paLinks.length > 0 && d.type==='ancillary') {
+    const inLinks = paLinks.filter(l=>l.target.id===d.id);
+    if(inLinks.length) connHtml += `<h4 style="margin-top:8px">Primary tools that use this</h4>${connListHtml(inLinks, 'conn-dot-pa')}`;
+  }
+  connHtml += '</div>';
+
+  document.getElementById('sidebar-content').innerHTML = `
+    <div class="info-card">
+      <h3>${d.id}</h3>
+      <span class="badge ${badgeClass}">${typeLabel}</span>
+      <div class="stat-row"><span class="stat-label">Studies using this</span><span class="stat-value">${d.count}</span></div>
+      <div class="stat-row"><span class="stat-label">Connections shown</span><span class="stat-value">${connLinks.length}</span></div>
+      ${intvHtml}
+    </div>
+    ${connLinks.length > 0 ? `<div class="info-card">${connHtml}</div>` : ''}
+  `;
+}
+
+// Tooltip
+const tooltip = document.getElementById('tooltip');
+function showTooltip(e, d) {
+  tooltip.style.opacity = '1';
+  tooltip.innerHTML = `<strong>${d.id}</strong><br>${d.count} stud${d.count===1?'y':'ies'}`;
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  const rect = wrap.getBoundingClientRect();
+  let x = e.clientX - rect.left + 12;
+  let y = e.clientY - rect.top - 10;
+  if(x + 210 > rect.width) x = e.clientX - rect.left - 220;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+function hideTooltip() { tooltip.style.opacity = '0'; }
+
+// Resize
+new ResizeObserver(() => {
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  sim.force('center', d3.forceCenter(W/2, H/2)).alpha(0.1).restart();
+}).observe(wrap);
+</script>
+</body>
+</html>
